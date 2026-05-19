@@ -3,18 +3,15 @@ from dotenv import load_dotenv
 
 from langchain_groq import ChatGroq
 
-from langchain_classic.chains import LLMMathChain
-from langchain_classic.chains import LLMChain
-
+from langchain_classic.chains import LLMMathChain, LLMChain
 from langchain_core.prompts import PromptTemplate
 from langchain_core.tools import Tool
 
 from langchain_community.utilities import WikipediaAPIWrapper
 from langchain_community.callbacks.streamlit import StreamlitCallbackHandler
 
-# ✅ New imports replacing initialize_agent + AgentType
-from langchain.agents import create_react_agent, AgentExecutor
-from langchain import hub
+# ✅ Correct imports for langchain 1.x + langgraph
+from langgraph.prebuilt import create_react_agent
 
 load_dotenv()
 
@@ -65,18 +62,8 @@ reasoning_tool = Tool(
 
 tools = [wikipedia_tool, calculator_tool, reasoning_tool]
 
-# ✅ Pull the standard ReAct prompt from LangChain Hub
-react_prompt = hub.pull("hwchase17/react")
-
-# ✅ Create agent and wrap it in AgentExecutor
-agent = create_react_agent(llm=llm, tools=tools, prompt=react_prompt)
-
-assistant_agent = AgentExecutor(
-    agent=agent,
-    tools=tools,
-    verbose=True,
-    handle_parsing_errors=True
-)
+# ✅ create_react_agent from langgraph returns a compiled graph directly
+assistant_agent = create_react_agent(model=llm, tools=tools)
 
 if "messages" not in st.session_state:
     st.session_state.messages = [
@@ -97,15 +84,13 @@ if st.button("Find My Answer"):
         st.chat_message("user").write(question)
 
         with st.spinner("Generating response..."):
-            st_cb = StreamlitCallbackHandler(st.container(), expand_new_thoughts=False)
-
-            # ✅ AgentExecutor uses .invoke(), not .run()
-            response = assistant_agent.invoke(
-                {"input": question},
-                {"callbacks": [st_cb]}
+            # ✅ LangGraph agent uses .invoke() with a messages list
+            result = assistant_agent.invoke(
+                {"messages": [{"role": "user", "content": question}]}
             )
 
-            answer = response["output"]
+            # ✅ Extract the last AI message from the graph output
+            answer = result["messages"][-1].content
 
             st.session_state.messages.append({"role": "assistant", "content": answer})
             st.chat_message("assistant").write(answer)
