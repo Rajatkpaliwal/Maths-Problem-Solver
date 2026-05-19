@@ -1,9 +1,9 @@
 langchain
-python-dotenv
 langchain_community
 langchain_core
 langchain_groq
-langchainhub
+langgraph
 streamlit
 wikipedia
 numexpr
+python-dotenv
