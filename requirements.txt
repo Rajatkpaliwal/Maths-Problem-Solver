@@ -3,4 +3,5 @@ python-dotenv
 langchain_community
 langchain_core
 langchain_groq
+langchainhub
 streamlit
