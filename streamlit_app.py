@@ -24,7 +24,7 @@ if not groq_api_key:
     st.info("Please enter your Groq API Key to continue")
     st.stop()
 
-llm = ChatGroq(model="gemma2-9b-it", groq_api_key=groq_api_key)
+llm = ChatGroq(model="openai/gpt-oss-120b", groq_api_key=groq_api_key)
 
 wikipedia_wrapper = WikipediaAPIWrapper()
 wikipedia_tool = Tool(
