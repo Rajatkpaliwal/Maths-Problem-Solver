@@ -1,16 +1,11 @@
 import streamlit as st
 from dotenv import load_dotenv
+import math
+import re
 
 from langchain_groq import ChatGroq
-
-from langchain_classic.chains import LLMMathChain, LLMChain
-from langchain_core.prompts import PromptTemplate
-from langchain_core.tools import Tool
-
+from langchain_core.tools import tool
 from langchain_community.utilities import WikipediaAPIWrapper
-from langchain_community.callbacks.streamlit import StreamlitCallbackHandler
-
-# ✅ Correct imports for langchain 1.x + langgraph
 from langgraph.prebuilt import create_react_agent
 
 load_dotenv()
@@ -24,45 +19,50 @@ if not groq_api_key:
     st.info("Please enter your Groq API Key to continue")
     st.stop()
 
-llm = ChatGroq(model="llama-3.3-70b-versatile", groq_api_key=groq_api_key)
-
-wikipedia_wrapper = WikipediaAPIWrapper()
-wikipedia_tool = Tool(
-    name="Wikipedia",
-    func=wikipedia_wrapper.run,
-    description="Useful for searching general information about people, places, history, science, etc."
+llm = ChatGroq(
+    model="llama-3.3-70b-versatile",
+    groq_api_key=groq_api_key
 )
 
-math_chain = LLMMathChain.from_llm(llm=llm)
-calculator_tool = Tool(
-    name="Calculator",
-    func=math_chain.run,
-    description="Useful for solving mathematical calculations and numerical problems."
-)
+# ✅ Plain Python tools — no LLMMathChain or LLMChain needed
 
-prompt_template = PromptTemplate(
-    input_variables=["question"],
-    template="""
-You are a helpful math assistant.
-Solve the following question step-by-step with proper logical reasoning.
+@tool
+def calculator(expression: str) -> str:
+    """
+    Evaluates a mathematical expression and returns the result.
+    Input should be a valid Python math expression string,
+    e.g. '2 + 3 * 4', 'sqrt(16)', '100 / 5'.
+    """
+    try:
+        # Allow safe math functions
+        allowed = {k: getattr(math, k) for k in dir(math) if not k.startswith("_")}
+        allowed["abs"] = abs
+        result = eval(expression, {"__builtins__": {}}, allowed)
+        return str(result)
+    except Exception as e:
+        return f"Error evaluating expression: {e}"
 
-Question:
-{question}
+@tool
+def wikipedia_search(query: str) -> str:
+    """
+    Searches Wikipedia for general information about a topic.
+    Useful for facts about people, places, events, science, history, etc.
+    """
+    wrapper = WikipediaAPIWrapper()
+    return wrapper.run(query)
 
-Answer:
-"""
-)
+@tool
+def reasoning(question: str) -> str:
+    """
+    Breaks down and reasons through a logical or word problem step by step.
+    Use this for multi-step problems, unit conversions, or verbal reasoning.
+    Input should be the full question or sub-problem to reason through.
+    """
+    # Just return the question — the agent itself does the reasoning
+    return f"Reasoning through: {question}\nPlease work through this step by step."
 
-reasoning_chain = LLMChain(llm=llm, prompt=prompt_template)
-reasoning_tool = Tool(
-    name="Reasoning Tool",
-    func=reasoning_chain.run,
-    description="Useful for solving logical, reasoning, word problems, and detailed explanations."
-)
+tools = [calculator, wikipedia_search, reasoning]
 
-tools = [wikipedia_tool, calculator_tool, reasoning_tool]
-
-# ✅ create_react_agent from langgraph returns a compiled graph directly
 assistant_agent = create_react_agent(model=llm, tools=tools)
 
 if "messages" not in st.session_state:
@@ -84,13 +84,13 @@ if st.button("Find My Answer"):
         st.chat_message("user").write(question)
 
         with st.spinner("Generating response..."):
-            # ✅ LangGraph agent uses .invoke() with a messages list
-            result = assistant_agent.invoke(
-                {"messages": [{"role": "user", "content": question}]}
-            )
-
-            # ✅ Extract the last AI message from the graph output
-            answer = result["messages"][-1].content
+            try:
+                result = assistant_agent.invoke(
+                    {"messages": [{"role": "user", "content": question}]}
+                )
+                answer = result["messages"][-1].content
+            except Exception as e:
+                answer = f"❌ Error: {str(e)}"
 
             st.session_state.messages.append({"role": "assistant", "content": answer})
             st.chat_message("assistant").write(answer)
